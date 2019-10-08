@@ -296,7 +296,11 @@ function Export-DbaLogin {
                         Write-Message -Level Verbose -Message "Exporting $userName"
                     }
 
-                    $outsql += "`r`nUSE master`n"
+                    $outsql += "/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\ " + "`r`n" +
+                               "| $userName "                                                                    + "`r`n" +
+                               "\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/ " + "`r`n" +
+		                       "USE master"
+
                     # Getting some attributes
                     if ($DefaultDatabase) {
                         $defaultDb = $DefaultDatabase
@@ -357,11 +361,13 @@ function Export-DbaLogin {
                         $sid = "0x"; $sourceLogin.sid | ForEach-Object {
                             $sid += ("{0:X}" -f $_).PadLeft(2, "0")
                         }
-                        $outsql += "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName') CREATE LOGIN [$userName] WITH PASSWORD = $hashedPass HASHED, SID = $sid, DEFAULT_DATABASE = [$defaultDb], CHECK_POLICY = $checkPolicy, CHECK_EXPIRATION = $checkExpiration, DEFAULT_LANGUAGE = [$language]"
+                        $outsql += "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName')" + "`r`n`t" +
+                                   "CREATE LOGIN [$userName] WITH PASSWORD = $hashedPass HASHED, SID = $sid, DEFAULT_DATABASE = [$defaultDb], CHECK_POLICY = $checkPolicy, CHECK_EXPIRATION = $checkExpiration, DEFAULT_LANGUAGE = [$language]"
                     }
                     # Attempt to script out Windows User
                     elseif ($sourceLogin.LoginType -eq "WindowsUser" -or $sourceLogin.LoginType -eq "WindowsGroup") {
-                        $outsql += "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName') CREATE LOGIN [$userName] FROM WINDOWS WITH DEFAULT_DATABASE = [$defaultDb], DEFAULT_LANGUAGE = [$language]"
+                        $outsql += "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName')" + "`r`n`t" +
+                                   "CREATE LOGIN [$userName] FROM WINDOWS WITH DEFAULT_DATABASE = [$defaultDb], DEFAULT_LANGUAGE = [$language]"
                     }
                     # This script does not currently support certificate mapped or asymmetric key users.
                     else {
@@ -403,8 +409,8 @@ function Export-DbaLogin {
 
                     foreach ($ownedJob in $ownedJobs) {
                         $ownedJob = $ownedJob -replace ("'", "''")
-                        $outsql += "`n`rUSE msdb`n"
-                        $outsql += "EXEC msdb.dbo.sp_update_job @job_name=N'$ownedJob', @owner_login_name=N'$userName'"
+                        $outsql += "USE msdb" + "`r`n" +
+                                   "EXEC msdb.dbo.sp_update_job @job_name=N'$ownedJob', @owner_login_name=N'$userName'"
                     }
                 }
 
@@ -413,9 +419,9 @@ function Export-DbaLogin {
                     # Securables: Connect SQL, View any database, Administer Bulk Operations, etc.
 
                     $perms = $server.EnumServerPermissions($userName)
-                    $outsql += "`n`rUSE master`n"
+                    $outsql += "USE master"
                     foreach ($perm in $perms) {
-                        $permState = $perm.permissionstate
+                        $permState = ($perm.permissionstate).ToUpper()
                         $permType = $perm.PermissionType
                         $grantor = $perm.grantor
 
@@ -454,7 +460,11 @@ function Export-DbaLogin {
                         $sourceDb = $server.Databases[$dbName]
                         $dbUserName = $db.username
 
-                        $outsql += "`r`nUSE [$dbName]`n"
+                        $outsql += "/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\ " + "`r`n" +
+                                   "| $dbName -> $dbUserName "                                                       + "`r`n" +
+							       "\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/ " + "`r`n" +
+                                   "USE [$dbname]"
+
                         try {
                             $sql = $server.Databases[$dbName].Users[$dbUserName].Script()
                             $outsql += $sql
@@ -479,7 +489,7 @@ function Export-DbaLogin {
                         # Connect, Alter Any Assembly, etc
                         $perms = $sourceDb.EnumDatabasePermissions($dbUserName)
                         foreach ($perm in $perms) {
-                            $permState = $perm.PermissionState
+                            $permState = ($perm.PermissionState).ToUpper()
                             $permType = $perm.PermissionType
                             $grantor = $perm.Grantor
 
@@ -492,6 +502,34 @@ function Export-DbaLogin {
 
                             $outsql += "$permState $permType TO [$userName] $grantWithGrant AS [$grantor]"
                         }
+
+						# Permissions on object level
+						$perms = $sourceDb.EnumObjectPermissions($dbUserName)
+						foreach ($perm in $perms) {
+							$permState = ($perm.permissionstate).ToUpper()
+							$permType = $perm.PermissionType
+							$permObjectClass = $perm.ObjectClass
+							$permObjectName = $perm.ObjectName
+							$permObjectSchema = $perm.ObjectSchema
+							$grantor = $perm.grantor
+	
+							if ($permState -eq "GrantWithGrant") {
+								$grantwithgrant = "WITH GRANT OPTION"
+								$permstate = "GRANT"
+							} else {
+								$grantwithgrant = $null
+							}
+
+							if ($permObjectClass -eq "Schema") {
+								$permObjectClass = "$permObjectClass::"
+								$permObjectSchema = ""
+							} else {
+								$permObjectClass = ""
+								$permObjectSchema = "[$permObjectSchema]."
+							}
+									
+							$outsql += "$permState $permType ON $permObjectClass $permObjectSchema[$permObjectName] TO [$dbUserName] $grantwithgrant AS [$grantor]"
+						}
                     }
                 }
                 $loginObject = [PSCustomObject]@{
