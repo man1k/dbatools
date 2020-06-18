@@ -474,6 +474,8 @@ function Export-DbaLogin {
 
                         try {
                             $sql = $server.Databases[$dbName].Users[$dbUserName].Script()
+                            $outsql += "IF EXISTS (SELECT TOP 1 1 FROM sys.sysusers AS s WHERE s.name = N'" + $dbUserName + "')" + "`r`n`t" +
+                                       "DROP USER [" + $dbUserName + "];"
                             $outsql += $sql
                         } catch {
                             Write-Message -Level Warning -Message "User cannot be found in selected database"
