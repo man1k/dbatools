@@ -65,6 +65,9 @@ function Test-DbaLastBackup {
     .PARAMETER MaxSize
         Max size in MB. Databases larger than this value will not be restored.
 
+    .PARAMETER DeviceType
+        Specifies a filter for backup sets based on DeviceTypes. Valid options are 'Disk','Permanent Disk Device', 'Tape', 'Permanent Tape Device','Pipe','Permanent Pipe Device','Virtual Device', in addition to custom integers for your own DeviceTypes.
+
     .PARAMETER AzureCredential
         The name of the SQL Server credential on the destination instance that holds the key to the azure storage account.
 
@@ -166,6 +169,7 @@ function Test-DbaLastBackup {
         [switch]$CopyFile,
         [string]$CopyPath,
         [int]$MaxSize,
+        [string[]]$DeviceType,
         [switch]$IncludeCopyOnly,
         [switch]$IgnoreLogBackup,
         [string]$AzureCredential,
@@ -253,8 +257,8 @@ function Test-DbaLastBackup {
 
             if ($datadirectory) {
                 if (-not (Test-DbaPath -SqlInstance $destserver -Path $datadirectory)) {
-                    $serviceaccount = $destserver.ServiceAccount
-                    Stop-Function -Message "Can't access $datadirectory Please check if $serviceaccount has permissions." -Continue
+                    $serviceAccount = $destserver.ServiceAccount
+                    Stop-Function -Message "Can't access $datadirectory Please check if $serviceAccount has permissions." -Continue
                 }
             } else {
                 $datadirectory = Get-SqlDefaultPaths -SqlInstance $destserver -FileType mdf
@@ -262,8 +266,8 @@ function Test-DbaLastBackup {
 
             if ($logdirectory) {
                 if (-not (Test-DbaPath -SqlInstance $destserver -Path $logdirectory)) {
-                    $serviceaccount = $destserver.ServiceAccount
-                    Stop-Function -Message "$Destination can't access its local directory $logdirectory. Please check if $serviceaccount has permissions." -Continue
+                    $serviceAccount = $destserver.ServiceAccount
+                    Stop-Function -Message "$Destination can't access its local directory $logdirectory. Please check if $serviceAccount has permissions." -Continue
                 }
             } else {
                 $logdirectory = Get-SqlDefaultPaths -SqlInstance $destserver -FileType ldf
@@ -279,13 +283,13 @@ function Test-DbaLastBackup {
             if (Test-Bound "IgnoreLogBackup") {
                 Write-Message -Level Verbose -Message "Skipping Log backups as requested."
                 $lastbackup = @()
-                $lastbackup += $full = Get-DbaDbBackupHistory -SqlInstance $sourceserver -Database $dbname -IncludeCopyOnly:$IncludeCopyOnly -LastFull -WarningAction SilentlyContinue
-                $diff = Get-DbaDbBackupHistory -SqlInstance $sourceserver -Database $dbname -IncludeCopyOnly:$IncludeCopyOnly -LastDiff -WarningAction SilentlyContinue
+                $lastbackup += $full = Get-DbaDbBackupHistory -SqlInstance $sourceserver -Database $dbname -IncludeCopyOnly:$IncludeCopyOnly -LastFull -DeviceType $DeviceType -WarningAction SilentlyContinue
+                $diff = Get-DbaDbBackupHistory -SqlInstance $sourceserver -Database $dbname -IncludeCopyOnly:$IncludeCopyOnly -LastDiff -DeviceType $DeviceType -WarningAction SilentlyContinue
                 if ($full.start -le $diff.start) {
                     $lastbackup += $diff
                 }
             } else {
-                $lastbackup = Get-DbaDbBackupHistory -SqlInstance $sourceserver -Database $dbname -IncludeCopyOnly:$IncludeCopyOnly -Last -WarningAction SilentlyContinue
+                $lastbackup = Get-DbaDbBackupHistory -SqlInstance $sourceserver -Database $dbname -IncludeCopyOnly:$IncludeCopyOnly -Last -DeviceType $DeviceType -WarningAction SilentlyContinue
             }
 
             if (-not $lastbackup) {
