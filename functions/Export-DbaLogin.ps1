@@ -297,10 +297,11 @@ function Export-DbaLogin {
                         Write-Message -Level Verbose -Message "Exporting $userName"
                     }
 
-                    $outsql += "/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\ " + "`r`n" +
-                               "| $userName "                                                                    + "`r`n" +
-                               "\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/ " + "`r`n" +
-		                       "USE master"
+                    $outsql +=
+                    "/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\ " + "`r`n" +
+                    "| $userName                                                                    " + "`r`n" +
+                    "\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/ " + "`r`n" +
+                    "USE master"
 
                     # Getting some attributes
                     if ($DefaultDatabase) {
@@ -362,13 +363,15 @@ function Export-DbaLogin {
                         $sid = "0x"; $sourceLogin.sid | ForEach-Object {
                             $sid += ("{0:X}" -f $_).PadLeft(2, "0")
                         }
-                        $outsql += "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName')" + "`r`n`t" +
-                                   "CREATE LOGIN [$userName] WITH PASSWORD = $hashedPass HASHED, SID = $sid, DEFAULT_DATABASE = [$defaultDb], CHECK_POLICY = $checkPolicy, CHECK_EXPIRATION = $checkExpiration, DEFAULT_LANGUAGE = [$language]"
+                        $outsql +=
+                        "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName')" + "`r`n`t" +
+                        "CREATE LOGIN [$userName] WITH PASSWORD = $hashedPass HASHED, SID = $sid, DEFAULT_DATABASE = [$defaultDb], CHECK_POLICY = $checkPolicy, CHECK_EXPIRATION = $checkExpiration, DEFAULT_LANGUAGE = [$language]"
                     }
                     # Attempt to script out Windows User
                     elseif ($sourceLogin.LoginType -eq "WindowsUser" -or $sourceLogin.LoginType -eq "WindowsGroup") {
-                        $outsql += "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName')" + "`r`n`t" +
-                                   "CREATE LOGIN [$userName] FROM WINDOWS WITH DEFAULT_DATABASE = [$defaultDb], DEFAULT_LANGUAGE = [$language]"
+                        $outsql +=
+                        "IF NOT EXISTS (SELECT loginname FROM master.dbo.syslogins WHERE name = '$userName')" + "`r`n`t" +
+                        "CREATE LOGIN [$userName] FROM WINDOWS WITH DEFAULT_DATABASE = [$defaultDb], DEFAULT_LANGUAGE = [$language]"
                     }
                     # This script does not currently support certificate mapped or asymmetric key users.
                     else {
@@ -410,8 +413,9 @@ function Export-DbaLogin {
 
                     foreach ($ownedJob in $ownedJobs) {
                         $ownedJob = $ownedJob -replace ("'", "''")
-                        $outsql += "USE msdb" + "`r`n" +
-                                   "EXEC msdb.dbo.sp_update_job @job_name=N'$ownedJob', @owner_login_name=N'$userName'"
+                        $outsql +=
+                        "USE msdb" + "`r`n" +
+                        "EXEC msdb.dbo.sp_update_job @job_name=N'$ownedJob', @owner_login_name=N'$userName'"
                     }
                 }
 
@@ -422,7 +426,7 @@ function Export-DbaLogin {
                     $perms = $server.EnumServerPermissions($userName)
                     $outsql += "USE master"
                     foreach ($perm in $perms) {
-                        $permState = ($perm.permissionstate).ToUpper()
+                        $permState = $perm.permissionstate
                         $permType = $perm.PermissionType
                         $grantor = $perm.grantor
 
@@ -431,6 +435,7 @@ function Export-DbaLogin {
                             $permState = "GRANT"
                         } else {
                             $grantWithGrant = $null
+                            $permState = ($permState.ToString()).ToUpper()
                         }
 
                         $outsql += "$permState $permType TO [$userName] $grantWithGrant AS [$grantor]"
@@ -461,10 +466,11 @@ function Export-DbaLogin {
                         $sourceDb = $server.Databases[$dbName]
                         $dbUserName = $db.username
 
-                        $outsql += "/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\ " + "`r`n" +
-                                   "| $dbName -> $dbUserName "                                                       + "`r`n" +
-							       "\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/ " + "`r`n" +
-                                   "USE [$dbname]"
+                        $outsql +=
+                        "/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\ " + "`r`n" +
+                        "| $dbName -> $dbUserName                                                       " + "`r`n" +
+                        "\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/ " + "`r`n" +
+                        "USE [$dbname]"
 
                         try {
                             $sql = $server.Databases[$dbName].Users[$dbUserName].Script()
@@ -490,7 +496,7 @@ function Export-DbaLogin {
                         # Connect, Alter Any Assembly, etc
                         $perms = $sourceDb.EnumDatabasePermissions($dbUserName)
                         foreach ($perm in $perms) {
-                            $permState = ($perm.PermissionState).ToUpper()
+                            $permState = $perm.PermissionState
                             $permType = $perm.PermissionType
                             $grantor = $perm.Grantor
 
@@ -499,38 +505,40 @@ function Export-DbaLogin {
                                 $permState = "GRANT"
                             } else {
                                 $grantWithGrant = $null
+                                $permState = ($permState.ToString()).ToUpper()
                             }
 
                             $outsql += "$permState $permType TO [$userName] $grantWithGrant AS [$grantor]"
                         }
 
-						# Permissions on object level
-						$perms = $sourceDb.EnumObjectPermissions($dbUserName)
-						foreach ($perm in $perms) {
-							$permState = ($perm.permissionstate).ToUpper()
-							$permType = $perm.PermissionType
-							$permObjectClass = $perm.ObjectClass
-							$permObjectName = $perm.ObjectName
-							$permObjectSchema = $perm.ObjectSchema
-							$grantor = $perm.grantor
-	
-							if ($permState -eq "GrantWithGrant") {
-								$grantwithgrant = "WITH GRANT OPTION"
-								$permstate = "GRANT"
-							} else {
-								$grantwithgrant = $null
-							}
+                        # Permissions on object level
+                        $perms = $sourceDb.EnumObjectPermissions($dbUserName)
+                        foreach ($perm in $perms) {
+                            $permState = $perm.permissionstate
+                            $permType = $perm.PermissionType
+                            $permObjectClass = $perm.ObjectClass
+                            $permObjectName = $perm.ObjectName
+                            $permObjectSchema = $perm.ObjectSchema
+                            $grantor = $perm.grantor
 
-							if ($permObjectClass -eq "Schema") {
-								$permObjectClass = "$permObjectClass::"
-								$permObjectSchema = ""
-							} else {
-								$permObjectClass = ""
-								$permObjectSchema = "[$permObjectSchema]."
-							}
-									
-							$outsql += "$permState $permType ON $permObjectClass $permObjectSchema[$permObjectName] TO [$dbUserName] $grantwithgrant AS [$grantor]"
-						}
+                            if ($permState -eq "GrantWithGrant") {
+                                $grantwithgrant = "WITH GRANT OPTION"
+                                $permstate = "GRANT"
+                            } else {
+                                $grantwithgrant = $null
+                                $permState = ($permState.ToString()).ToUpper()
+                            }
+
+                            if ($permObjectClass -eq "Schema") {
+                                $permObjectClass = "$permObjectClass::"
+                                $permObjectSchema = ""
+                            } else {
+                                $permObjectClass = ""
+                                $permObjectSchema = "[$permObjectSchema]."
+                            }
+
+                            $outsql += "$permState $permType ON $permObjectClass $permObjectSchema[$permObjectName] TO [$dbUserName] $grantwithgrant AS [$grantor]"
+                        }
                     }
                 }
                 $loginObject = [PSCustomObject]@{
@@ -548,7 +556,7 @@ function Export-DbaLogin {
             if ($NoPrefix) {
                 $prefix = $null
             } else {
-                $prefix = "/*`r`n`tCreated by $executingUser using dbatools $commandName for objects on $($login.Instance) at $(Get-Date -Format (Get-DbatoolsConfigValue -FullName 'Formatting.DateTime'))`r`n`tSee https://dbatools.io/$commandName for more information`r`n*/"
+                $prefix = "/*`r`n`tCreated by $executingUser using dbatools $commandName for objects on $($login.Instance) at $(Get-Date -Format (Get-DbatoolsConfigValue -FullName 'Formatting.DateTime'))`r`n`tSee https://dbatools.io/$commandName for more information`r`n*/`n"
             }
 
             if ($BatchSeparator) {
