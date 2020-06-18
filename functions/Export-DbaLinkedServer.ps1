@@ -36,6 +36,9 @@ function Export-DbaLinkedServer {
     .PARAMETER ExcludePassword
         Exports the linked server without any sensitive information.
 
+    .PARAMETER Force
+        To add DROP of the LS (if exists) before the creation
+
     .PARAMETER Append
         Append to Path
 
@@ -74,6 +77,7 @@ function Export-DbaLinkedServer {
         [Alias("OutFile", "FileName")]
         [string]$FilePath,
         [switch]$ExcludePassword,
+        [switch]$Force,
         [switch]$Append,
         [Microsoft.SqlServer.Management.Smo.LinkedServer[]]$InputObject,
         [switch]$EnableException
@@ -128,8 +132,14 @@ function Export-DbaLinkedServer {
                     Stop-Function -Continue -Message "Failure" -ErrorRecord $_
                 }
 
+				$outsql = ""
                 foreach ($ls in $InputObject) {
-                    $currentls = $decrypted | Where-Object Name -eq $ls.Name
+					$lsName = $ls.Name
+                    if ($ls.Distributor -or $ls.Publisher -or $ls.Subscriber) {
+                        Write-Message -Level Verbose -Message '-- Server is Distributor, Publisher or Subscriber. We are skipping it!'
+                        continue
+                    }
+                    $currentls = $decrypted | Where-Object Name -eq $lsName
                     if ($currentls.Password) {
                         $tempsql = $ls.Script()
                         foreach ($map in $currentls) {
@@ -142,18 +152,31 @@ function Export-DbaLinkedServer {
                     } else {
                         $sql += $ls.Script()
                     }
+                    if ($Force)
+                    {
+                        Write-Message -Level Verbose -Message '-- We have Force'
+                        $outsql += "IF EXISTS(SELECT TOP 1 1 FROM sys.servers AS s WHERE s.is_linked = 1 AND s.name = N'$lsName')" + "`r`n`t" +
+                                   "EXEC master.dbo.sp_dropserver @server = N'$lsName', @droplogins = 'droplogins';" + "`r`n"
+                    }
+                    $outsql += $sql
                 }
-            }
-            try {
-                if ($Append) {
-                    Add-Content -Path $FilePath -Value $sql
-                } else {
-                    Set-Content -Path $FilePath -Value $sql
-                }
-                Get-ChildItem -Path $FilePath
-            } catch {
-                Stop-Function -Message "Can't write to $FilePath" -ErrorRecord $_ -Continue
             }
         }
     }
+	end {
+        try {
+            $sql = $outsql -join "GO`r`n`r`n"
+            if ($Append) {
+                Add-Content -Path $FilePath -Value $sql
+            } else {
+                Set-Content -Path $FilePath -Value $sql
+            }
+            Get-ChildItem -Path $FilePath
+        } catch {
+            Stop-Function -Message "Can't write to $FilePath" -ErrorRecord $_ -Continue
+        }
+
+        $server.ConnectionContext.Disconnect()
+		Write-Message -Level Verbose -Message "-- Linked Server export finished"
+	}
 }
