@@ -1,14 +1,17 @@
 
 -- Azure SQL Database Diagnostic Information Queries
 -- Glenn Berry 
--- Last Modified: June 1, 2020
+-- Last Modified: July 1, 2021
 -- https://glennsqlperformance.com/
 -- https://sqlserverperformance.wordpress.com/
+-- YouTube: https://bit.ly/2PkoAM1 
 -- Twitter: GlennAlanBerry
 
--- Please listen to my Pluralsight courses
--- https://www.pluralsight.com/author/glenn-berry
+-- Diagnostic Queries are available here
+-- https://glennsqlperformance.com/resources/
 
+-- YouTube video demonstrating these queries
+-- https://bit.ly/3aXNDzJ
 
 -- If you like PowerShell, there is a very useful community solution for running these queries in an automated fashion
 -- https://dbatools.io/
@@ -18,7 +21,7 @@
 
 
 --******************************************************************************
---*   Copyright (C) 2020 Glenn Berry
+--*   Copyright (C) 2021 Glenn Berry
 --*   All rights reserved. 
 --*
 --*
@@ -38,11 +41,12 @@
 
 -- Server level queries *******************************
 
--- SQL and OS Version information for current instance  (Query 1) (Version Info)
-SELECT @@SERVERNAME AS [Server Name], @@VERSION AS [SQL Server and OS Version Info];
+-- SQL information for current database  (Query 1) (Version Info)
+SELECT @@SERVERNAME AS [Server Name], @@VERSION AS [SQL Server Version Info];
 ------
 
 -- Azure SQL Database does not expose as much information as on-premises SQL Server does
+-- Example: Microsoft SQL Azure (RTM) - 12.0.2000.8   Apr 29 2021 13:52:20   Copyright (C) 2019 Microsoft Corporation 
 													
 
 
@@ -57,15 +61,22 @@ ORDER BY name OPTION (RECOMPILE);
 
 
 -- SQL Server NUMA Node information  (Query 3) (SQL Server NUMA Info)
-SELECT node_id, node_state_desc, memory_node_id, processor_group, cpu_count, online_scheduler_count, 
-       idle_scheduler_count, active_worker_count, avg_load_balance, resource_monitor_state
-FROM sys.dm_os_nodes WITH (NOLOCK) 
-WHERE node_state_desc <> N'ONLINE DAC' OPTION (RECOMPILE);
+SELECT osn.node_id, osn.node_state_desc, osn.memory_node_id, osn.processor_group, osn.cpu_count, osn.online_scheduler_count, 
+       osn.idle_scheduler_count, osn.active_worker_count, 
+	   osmn.pages_kb/1024 AS [Committed Memory (MB)], 
+	   osmn.locked_page_allocations_kb/1024 AS [Locked Physical (MB)],
+	   CONVERT(DECIMAL(18,2), osmn.foreign_committed_kb/1024.0) AS [Foreign Commited (MB)],
+	   osmn.target_kb/1024 AS [Target Memory Goal (MB)],
+	   osn.avg_load_balance, osn.resource_monitor_state
+FROM sys.dm_os_nodes AS osn WITH (NOLOCK)
+INNER JOIN sys.dm_os_memory_nodes AS osmn WITH (NOLOCK)
+ON osn.memory_node_id = osmn.memory_node_id
+WHERE osn.node_state_desc <> N'ONLINE DAC' OPTION (RECOMPILE);
 ------
 
 -- Gives you some useful information about the composition and relative load on your NUMA nodes
 -- You want to see an equal number of schedulers on each NUMA node
-
+-- You don't have any control over this in Azure SQL Database
 
 
 -- Calculates average stalls per read, per write, and per total input/output for each database file  (Query 4) (IO Stalls by File)
@@ -82,21 +93,25 @@ ORDER BY avg_io_stall_ms DESC OPTION (RECOMPILE);
 -- Helps determine which database files on the entire instance have the most I/O bottlenecks
 -- This can help you decide whether certain LUNs are overloaded and whether you might
 -- want to move some files to a different location or perhaps improve your I/O performance
--- These latency numbers include all file activity against each SQL Server 
--- database file since SQL Server was last started
+-- These latency numbers include all file activity against each database file since SQL Server was last started
 
 
 
 -- Get I/O utilization by database (Query 5) (IO Usage By Database)
 WITH Aggregate_IO_Statistics
-AS
-(SELECT DB_NAME(database_id) AS [Database Name],
-CAST(SUM(num_of_bytes_read + num_of_bytes_written)/1048576 AS DECIMAL(12, 2)) AS io_in_mb
-FROM sys.dm_io_virtual_file_stats(NULL, NULL) AS [DM_IO_STATS]
-GROUP BY database_id)
-SELECT ROW_NUMBER() OVER(ORDER BY io_in_mb DESC) AS [I/O Rank], [Database Name], 
-      CAST(io_in_mb/ SUM(io_in_mb) OVER() * 100.0 AS DECIMAL(5,2)) AS [I/O Percent],
-      io_in_mb AS [Total I/O (MB)]     
+AS (SELECT DB_NAME(database_id) AS [Database Name],
+    CAST(SUM(num_of_bytes_read + num_of_bytes_written) / 1048576 AS DECIMAL(12, 2)) AS [ioTotalMB],
+    CAST(SUM(num_of_bytes_read ) / 1048576 AS DECIMAL(12, 2)) AS [ioReadMB],
+    CAST(SUM(num_of_bytes_written) / 1048576 AS DECIMAL(12, 2)) AS [ioWriteMB]
+    FROM sys.dm_io_virtual_file_stats(NULL, NULL) AS [DM_IO_STATS]
+    GROUP BY database_id)
+SELECT ROW_NUMBER() OVER (ORDER BY ioTotalMB DESC) AS [I/O Rank],
+        [Database Name], ioTotalMB AS [Total I/O (MB)],
+        CAST(ioTotalMB / SUM(ioTotalMB) OVER () * 100.0 AS DECIMAL(5, 2)) AS [Total I/O %],
+        ioReadMB AS [Read I/O (MB)], 
+		CAST(ioReadMB / SUM(ioReadMB) OVER () * 100.0 AS DECIMAL(5, 2)) AS [Read I/O %],
+        ioWriteMB AS [Write I/O (MB)], 
+		CAST(ioWriteMB / SUM(ioWriteMB) OVER () * 100.0 AS DECIMAL(5, 2)) AS [Write I/O %]
 FROM Aggregate_IO_Statistics
 ORDER BY [I/O Rank] OPTION (RECOMPILE);
 ------
@@ -108,8 +123,9 @@ ORDER BY [I/O Rank] OPTION (RECOMPILE);
 -- This make take some time to run on a busy instance
 WITH AggregateBufferPoolUsage
 AS
-(SELECT DB_NAME(database_id) AS [Database Name], COUNT(page_id) AS [Page Count],
-CAST(COUNT(*) * 8/1024.0 AS DECIMAL (10,2))  AS [CachedSize],
+(SELECT DB_NAME(database_id) AS [Database Name],
+CAST(COUNT_BIG(*) * 8/1024.0 AS DECIMAL (15,2)) AS [CachedSize],
+COUNT(page_id) AS [Page Count],
 AVG(read_microsec) AS [Avg Read Time (microseconds)]
 FROM sys.dm_os_buffer_descriptors WITH (NOLOCK)
 GROUP BY DB_NAME(database_id))
@@ -293,13 +309,8 @@ ON f.data_space_id = fg.data_space_id
 ORDER BY f.[file_id] OPTION (RECOMPILE);
 ------
 
--- Look at how large and how full the files are and where they are located
-
--- is_autogrow_all_files was new for SQL Server 2016. Equivalent to TF 1117 for user databases
-
--- SQL Server 2016: Changes in default behavior for autogrow and allocations for tempdb and user databases
--- http://bit.ly/2evRZSR
-
+-- Look at how large and how full the files are
+-- You have no control over this in Azure SQL Database
 
 
 -- Log space usage for current database  (Query 16) (Log Space Usage)
@@ -360,13 +371,15 @@ db.is_mixed_page_allocation_on, db.page_verify_option_desc AS [Page Verify Optio
 db.is_auto_create_stats_on, db.is_auto_update_stats_on, db.is_auto_update_stats_async_on, db.is_parameterization_forced, 
 db.snapshot_isolation_state_desc, db.is_read_committed_snapshot_on, db.is_auto_close_on, db.is_auto_shrink_on, 
 db.target_recovery_time_in_seconds, db.is_cdc_enabled, db.is_memory_optimized_elevate_to_snapshot_on, 
-db.delayed_durability_desc, db.is_auto_create_stats_incremental_on,
-db.is_query_store_on, db.is_sync_with_backup, db.is_temporal_history_retention_enabled,
-db.is_encrypted, is_result_set_caching_on, is_accelerated_database_recovery_on, is_tempdb_spill_to_remote_store  
+db.delayed_durability_desc, db.is_query_store_on, db.is_temporal_history_retention_enabled,
+db.is_accelerated_database_recovery_on, db.is_memory_optimized_enabled  
 FROM sys.databases AS db WITH (NOLOCK)
 WHERE db.[name] <> N'master'
 ORDER BY db.[name] OPTION (RECOMPILE);
 ------
+
+-- sys.databases (Transact-SQL)
+-- https://bit.ly/2G5wqaX
 
 -- Things to look at:
 -- What recovery model are you using?
@@ -875,25 +888,21 @@ ORDER BY [BufferCount] DESC OPTION (RECOMPILE);
 -- It can help identify possible candidates for data compression
 
 
--- Get Table names, row counts, and compression status for clustered index or heap  (Query 40) (Table Sizes)
-SELECT SCHEMA_NAME(o.Schema_ID) AS [Schema Name], OBJECT_NAME(p.object_id) AS [ObjectName], 
-SUM(p.Rows) AS [RowCount], data_compression_desc AS [CompressionType]
-FROM sys.partitions AS p WITH (NOLOCK)
-INNER JOIN sys.objects AS o WITH (NOLOCK)
+-- Get Schema names, Table names, object size, row counts, and compression status for clustered index or heap  (Query 40) (Table Sizes)
+SELECT SCHEMA_NAME(o.Schema_ID) AS [Schema Name], OBJECT_NAME(p.object_id) AS [Object Name],
+CAST(SUM(ps.reserved_page_count) * 8.0 / 1024 AS DECIMAL(19,2)) AS [Object Size (MB)],
+SUM(p.Rows) AS [Row Count], 
+p.data_compression_desc AS [Compression Type]
+FROM sys.objects AS o WITH (NOLOCK)
+INNER JOIN sys.partitions AS p WITH (NOLOCK)
 ON p.object_id = o.object_id
-WHERE index_id < 2 --ignore the partitions from the non-clustered index if any
-AND OBJECT_NAME(p.object_id) NOT LIKE N'sys%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'spt_%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'queue_%' 
-AND OBJECT_NAME(p.object_id) NOT LIKE N'filestream_tombstone%' 
-AND OBJECT_NAME(p.object_id) NOT LIKE N'fulltext%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'ifts_comp_fragment%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'filetable_updates%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'xml_index_nodes%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'sqlagent_job%'
-AND OBJECT_NAME(p.object_id) NOT LIKE N'plan_persist%'
-GROUP BY  SCHEMA_NAME(o.Schema_ID), p.object_id, data_compression_desc
-ORDER BY SUM(p.Rows) DESC OPTION (RECOMPILE);
+INNER JOIN sys.dm_db_partition_stats AS ps WITH (NOLOCK)
+ON p.object_id = ps.object_id
+WHERE ps.index_id < 2 -- ignore the partitions from the non-clustered indexes if any
+AND p.index_id < 2    -- ignore the partitions from the non-clustered indexes if any
+AND o.type_desc = N'USER_TABLE'
+GROUP BY  SCHEMA_NAME(o.Schema_ID), p.object_id, ps.reserved_page_count, p.data_compression_desc
+ORDER BY SUM(ps.reserved_page_count) DESC, SUM(p.Rows) DESC OPTION (RECOMPILE);
 ------
 
 -- Gives you an idea of table sizes, and possible data compression opportunities
@@ -990,7 +999,8 @@ ORDER BY ps.avg_fragmentation_in_percent DESC OPTION (RECOMPILE);
 
 
 --- Index Read/Write stats (all tables in current DB) ordered by Reads  (Query 45) (Overall Index Usage - Reads)
-SELECT OBJECT_NAME(i.[object_id]) AS [ObjectName], i.[name] AS [IndexName], i.index_id, 
+SELECT SCHEMA_NAME(t.[schema_id]) AS [SchemaName], OBJECT_NAME(i.[object_id]) AS [ObjectName], 
+       i.[name] AS [IndexName], i.index_id, 
        s.user_seeks, s.user_scans, s.user_lookups,
 	   s.user_seeks + s.user_scans + s.user_lookups AS [Total Reads], 
 	   s.user_updates AS [Writes],  
@@ -1001,6 +1011,8 @@ LEFT OUTER JOIN sys.dm_db_index_usage_stats AS s WITH (NOLOCK)
 ON i.[object_id] = s.[object_id]
 AND i.index_id = s.index_id
 AND s.database_id = DB_ID()
+LEFT OUTER JOIN sys.tables AS t WITH (NOLOCK)
+ON t.[object_id] = i.[object_id]
 WHERE OBJECTPROPERTY(i.[object_id],'IsUserTable') = 1
 ORDER BY s.user_seeks + s.user_scans + s.user_lookups DESC OPTION (RECOMPILE); -- Order by reads
 ------
@@ -1009,7 +1021,8 @@ ORDER BY s.user_seeks + s.user_scans + s.user_lookups DESC OPTION (RECOMPILE); -
 
 
 --- Index Read/Write stats (all tables in current DB) ordered by Writes  (Query 46) (Overall Index Usage - Writes)
-SELECT OBJECT_NAME(i.[object_id]) AS [ObjectName], i.[name] AS [IndexName], i.index_id,
+SELECT SCHEMA_NAME(t.[schema_id]) AS [SchemaName],OBJECT_NAME(i.[object_id]) AS [ObjectName], 
+	   i.[name] AS [IndexName], i.index_id,
 	   s.user_updates AS [Writes], s.user_seeks + s.user_scans + s.user_lookups AS [Total Reads], 
 	   i.[type_desc] AS [Index Type], i.fill_factor AS [Fill Factor], i.has_filter, i.filter_definition,
 	   s.last_system_update, s.last_user_update
@@ -1018,6 +1031,8 @@ LEFT OUTER JOIN sys.dm_db_index_usage_stats AS s WITH (NOLOCK)
 ON i.[object_id] = s.[object_id]
 AND i.index_id = s.index_id
 AND s.database_id = DB_ID()
+LEFT OUTER JOIN sys.tables AS t WITH (NOLOCK)
+ON t.[object_id] = i.[object_id]
 WHERE OBJECTPROPERTY(i.[object_id],'IsUserTable') = 1
 ORDER BY s.user_updates DESC OPTION (RECOMPILE);						 -- Order by writes
 ------
@@ -1225,28 +1240,6 @@ SELECT DATABASEPROPERTYEX (DB_NAME(DB_ID()), 'Edition') AS [Database Edition],
 
 -- DATABASEPROPERTYEX (Transact-SQL)
 -- https://bit.ly/2ItexPg
-
-
--- These six Pluralsight Courses go into more detail about how to run these queries and interpret the results
-
--- Azure SQL Database: Diagnosing Performance Issues with DMVs
--- https://bit.ly/2meDRCN
-
--- SQL Server 2017: Diagnosing Performance Issues with DMVs
--- https://bit.ly/2FqCeti
-
--- SQL Server 2017: Diagnosing Configuration Issues with DMVs
--- https://bit.ly/2MSUDUL
-
--- SQL Server 2014 DMV Diagnostic Queries – Part 1 
--- https://bit.ly/2plxCer
-
--- SQL Server 2014 DMV Diagnostic Queries – Part 2
--- https://bit.ly/2IuJpzI
-
--- SQL Server 2014 DMV Diagnostic Queries – Part 3
--- https://bit.ly/2FIlCPb
-
 
 
 -- Microsoft Visual Studio Dev Essentials

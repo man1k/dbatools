@@ -11,7 +11,7 @@
     RootModule             = 'dbatools.psm1'
 
     # Version number of this module.
-    ModuleVersion          = '1.0.113'
+    ModuleVersion          = '1.0.169'
 
     # ID used to uniquely identify this module
     GUID                   = '9d139310-ce45-41ce-8e8b-d76335aa1789'
@@ -23,7 +23,7 @@
     CompanyName            = 'dbatools.io'
 
     # Copyright statement for this module
-    Copyright              = 'Copyright (c) 2019 by dbatools, licensed under MIT'
+    Copyright              = 'Copyright (c) 2021 by dbatools, licensed under MIT'
 
     # Description of the functionality provided by this module
     Description            = "The community module that enables SQL Server Pros to automate database development and server administration"
@@ -135,6 +135,7 @@
         'Get-DbaLastBackup',
         'Connect-DbaInstance',
         'Get-DbaDbBackupHistory',
+        'Get-DbaAgBackupHistory',
         'Read-DbaBackupHeader',
         'Test-DbaLastBackup',
         'Get-DbaMaxMemory',
@@ -191,11 +192,12 @@
         'Find-DbaDbGrowthEvent',
         'Test-DbaLinkedServerConnection',
         'Get-DbaDbFile',
+        'Get-DbaDbFileGrowth',
+        'Set-DbaDbFileGrowth',
         'Read-DbaTransactionLog',
         'Get-DbaDbTable',
         'Invoke-DbaDbShrink',
         'Get-DbaEstimatedCompletionTime',
-        'Get-DbaLinkedServer',
         'New-DbaAgentJob',
         'Get-DbaLogin',
         'New-DbaScriptingOption',
@@ -245,6 +247,7 @@
         'Get-DbaDbMailLog',
         'Get-DbaDbMailHistory',
         'Get-DbaDbView',
+        'Remove-DbaDbView',
         'Get-DbaDbUdf',
         'Get-DbaDbPartitionFunction',
         'Get-DbaDbPartitionScheme',
@@ -470,7 +473,7 @@
         'Get-DbatoolsChangeLog',
         'Get-DbaXESessionTargetFile',
         'Add-DbaDbRoleMember',
-        'Get-DbaDbFilegroup',
+        'Get-DbaDbFileGroup',
         'Get-DbaDbObjectTrigger',
         'Get-DbaDbRole',
         'New-DbaDbRole',
@@ -497,6 +500,33 @@
         'Remove-DbaDbAsymmetricKey',
         'Invoke-DbaDbTransfer',
         'New-DbaDbTransfer',
+        'Remove-DbaDbData',
+        'Test-DbaDbQueryStore',
+        'Install-DbaMultiTool',
+        'Remove-DbaAgentOperator',
+        'Remove-DbaDbTableData',
+        'Get-DbaDbSchema',
+        'New-DbaDbSchema',
+        'Set-DbaDbSchema',
+        'Remove-DbaDbSchema',
+        'Get-DbaDbSequence',
+        'New-DbaDbSequence',
+        'Remove-DbaDbSequence',
+        'Select-DbaDbSequenceNextValue',
+        'Set-DbaDbSequence',
+        'Get-DbaDbUserDefinedTableType',
+        'Get-DbaDbServiceBrokerService',
+        'Get-DbaDbServiceBrokerQueue ',
+        'Get-DbaDbSynonym',
+        'New-DbaDbSynonym',
+        'Remove-DbaDbSynonym',
+        'Install-DbaDarlingData',
+        'New-DbaDbFileGroup',
+        'Remove-DbaDbFileGroup',
+        'Set-DbaDbFileGroup',
+        'Get-DbaLinkedServer',
+        'Remove-DbaLinkedServer',
+        'Test-DbaAvailabilityGroup',
         # noncoresmo
         # SMO issues
         'Export-DbaUser',
@@ -517,6 +547,11 @@
         'Test-DbaRepLatency',
         'Export-DbaRepServerSetting',
         'Get-DbaRepServer',
+        'Export-DbaSysDbUserObject',
+        'Move-DbaDbFile'
+        'New-DbaAgentOperator',
+        'New-DbaCustomError',
+        'Remove-DbaCustomError',
         # windowsonly
         # solvable filesystem issues or other workarounds
         'Install-DbaSqlWatch',
@@ -528,6 +563,7 @@
         'Get-DbaAgentJobOutputFile',
         'Set-DbaAgentJobOutputFile',
         'Get-DbaBuildReference',
+        'Update-DbaBuildReference',
         'New-DbaDacProfile'
         'Import-DbaXESessionTemplate',
         'Export-DbaXESessionTemplate',
@@ -541,6 +577,8 @@
         'Test-DbaMaxMemory', # can be fixed by not testing remote when linux is detected
         'Rename-DbaDatabase', # can maybebe fixed by not remoting when linux is detected
         # CM and Windows functions
+        'Get-DbaNetworkConfiguration',
+        'Set-DbaNetworkConfiguration',
         'Get-DbaExtendedProtection',
         'Set-DbaExtendedProtection',
         'Install-DbaInstance',

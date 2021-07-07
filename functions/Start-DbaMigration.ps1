@@ -48,7 +48,7 @@ function Start-DbaMigration {
     .PARAMETER Destination
         Destination SQL Server. You may specify multiple servers.
 
-        Note that when using -BackupRestore with multiple servers, the backup will only be performed once and backups will be deleted at the end (if you didn't specify -ExcludeBackupCleanup).
+        Note that when using -BackupRestore with multiple servers, the backup will only be performed once and backups will be deleted at the end.
 
         When using -DetachAttach with multiple servers, -Reattach must be specified.
 
@@ -130,6 +130,12 @@ function Start-DbaMigration {
 
     .PARAMETER Continue
         If specified, will to attempt to restore transaction log backups on top of existing database(s) in Recovering or Standby states. Only usable with -UseLastBackup
+
+    .PARAMETER KeepCDC
+        Indicates whether CDC information should be copied as part of the database
+
+    .PARAMETER KeepReplication
+        Indicates whether replication configuration should be copied as part of the database copy operation
 
     .PARAMETER Force
         If migrating users, forces drop and recreate of SQL and Windows logins.
@@ -220,6 +226,8 @@ function Start-DbaMigration {
         [switch]$DisableJobsOnSource,
         [switch]$ExcludeSaRename,
         [switch]$UseLastBackup,
+        [switch]$KeepCDC,
+        [switch]$KeepReplication,
         [switch]$Continue,
         [switch]$Force,
         [string]$AzureCredential,
@@ -342,12 +350,12 @@ function Start-DbaMigration {
             Write-Message -Level Verbose -Message "Migrating databases"
             if ($BackupRestore) {
                 if ($UseLastBackup) {
-                    Copy-DbaDatabase -Source $sourceserver -Destination $Destination -DestinationSqlCredential $DestinationSqlCredential -AllDatabases -SetSourceReadOnly:$SetSourceReadOnly -ReuseSourceFolderStructure:$ReuseSourceFolderStructure -BackupRestore -Force:$Force -NoRecovery:$NoRecovery -WithReplace:$WithReplace -IncludeSupportDbs:$IncludeSupportDbs -UseLastBackup:$UseLastBackup -Continue:$Continue
+                    Copy-DbaDatabase -Source $sourceserver -Destination $Destination -DestinationSqlCredential $DestinationSqlCredential -AllDatabases -SetSourceReadOnly:$SetSourceReadOnly -ReuseSourceFolderStructure:$ReuseSourceFolderStructure -BackupRestore -Force:$Force -NoRecovery:$NoRecovery -WithReplace:$WithReplace -IncludeSupportDbs:$IncludeSupportDbs -UseLastBackup:$UseLastBackup -Continue:$Continue -KeepCDC:$KeepCDC -KeepReplication:$KeepReplication
                 } else {
-                    Copy-DbaDatabase -Source $sourceserver -Destination $Destination -DestinationSqlCredential $DestinationSqlCredential -AllDatabases -SetSourceReadOnly:$SetSourceReadOnly -ReuseSourceFolderStructure:$ReuseSourceFolderStructure -BackupRestore -SharedPath $SharedPath -Force:$Force -NoRecovery:$NoRecovery -WithReplace:$WithReplace -IncludeSupportDbs:$IncludeSupportDbs -AzureCredential $AzureCredential
+                    Copy-DbaDatabase -Source $sourceserver -Destination $Destination -DestinationSqlCredential $DestinationSqlCredential -AllDatabases -SetSourceReadOnly:$SetSourceReadOnly -ReuseSourceFolderStructure:$ReuseSourceFolderStructure -BackupRestore -SharedPath $SharedPath -Force:$Force -NoRecovery:$NoRecovery -WithReplace:$WithReplace -IncludeSupportDbs:$IncludeSupportDbs -AzureCredential $AzureCredential -KeepCDC:$KeepCDC -KeepReplication:$KeepReplication
                 }
             } else {
-                Copy-DbaDatabase -Source $sourceserver -Destination $Destination -DestinationSqlCredential $DestinationSqlCredential -AllDatabases -SetSourceReadOnly:$SetSourceReadOnly -ReuseSourceFolderStructure:$ReuseSourceFolderStructure -DetachAttach:$DetachAttach -Reattach:$Reattach -Force:$Force -IncludeSupportDbs:$IncludeSupportDbs
+                Copy-DbaDatabase -Source $sourceserver -Destination $Destination -DestinationSqlCredential $DestinationSqlCredential -AllDatabases -SetSourceReadOnly:$SetSourceReadOnly -ReuseSourceFolderStructure:$ReuseSourceFolderStructure -DetachAttach:$DetachAttach -Reattach:$Reattach -Force:$Force -IncludeSupportDbs:$IncludeSupportDbs -KeepCDC:$KeepCDC -KeepReplication:$KeepReplication
             }
         }
 

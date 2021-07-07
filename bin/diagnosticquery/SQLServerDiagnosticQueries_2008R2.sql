@@ -1,19 +1,20 @@
 
 -- SQL Server 2008 R2 Diagnostic Information Queries
 -- Glenn Berry 
--- Last Modified: February 26, 2020
+-- Last Modified: May 21, 2021
 -- https://glennsqlperformance.com/
 -- https://sqlserverperformance.wordpress.com/
+-- YouTube: https://bit.ly/2PkoAM1 
 -- Twitter: GlennAlanBerry
 
--- Please listen to my Pluralsight courses
--- https://www.pluralsight.com/author/glenn-berry
+-- Diagnostic Queries are available here
+-- https://glennsqlperformance.com/resources/
 
 -- Many of these queries will not work if you have databases in 80 compatibility mode
 -- Please make sure you are using the correct version of these diagnostic queries for your version of SQL Server
 
 --******************************************************************************
---*   Copyright (C) 2020 Glenn Berry
+--*   Copyright (C) 2021 Glenn Berry
 --*   All rights reserved. 
 --*
 --*
@@ -474,6 +475,15 @@ AND ls.cntr_value > 0
 ORDER BY db.[name] OPTION (RECOMPILE);
 ------
 
+-- sys.databases (Transact-SQL)
+-- https://bit.ly/2G5wqaX
+
+-- sys.dm_os_performance_counters (Transact-SQL)
+-- https://bit.ly/3kEO2JR
+
+-- sys.dm_database_encryption_keys (Transact-SQL)
+-- https://bit.ly/3mE7kkx
+
 -- Things to look at:
 -- How many databases are on the instance?
 -- What recovery models are they using?
@@ -579,11 +589,11 @@ ORDER BY [I/O Rank] OPTION (RECOMPILE);
 
 
 -- Get total buffer usage by database for current instance  (Query 26) (Total Buffer Usage by Database)
--- This make take some time to run on a busy instance
+-- This may take some time to run on a busy instance with lots of RAM
 WITH AggregateBufferPoolUsage
 AS
 (SELECT DB_NAME(database_id) AS [Database Name],
-CAST(COUNT(*) * 8/1024.0 AS DECIMAL (10,2))  AS [CachedSize]
+CAST(COUNT(*) * 8/1024.0 AS DECIMAL (15,2))  AS [CachedSize]
 FROM sys.dm_os_buffer_descriptors WITH (NOLOCK)
 WHERE database_id <> 32767 -- ResourceDB
 GROUP BY DB_NAME(database_id))
@@ -1144,7 +1154,7 @@ ORDER BY cp.usecounts DESC OPTION (RECOMPILE);
 
 -- Breaks down buffers used by current database by object (table, index) in the buffer cache  (Query 54) (Buffer Usage)
 -- Note: This query could take some time on a busy instance
-SELECT SCHEMA_NAME(o.Schema_ID) AS [Schema Name],
+SELECT fg.name AS [Filegroup Name], SCHEMA_NAME(o.Schema_ID) AS [Schema Name],
 OBJECT_NAME(p.[object_id]) AS [Object Name], p.index_id, 
 CAST(COUNT(*)/128.0 AS DECIMAL(10, 2)) AS [Buffer size(MB)],  
 COUNT(*) AS [BufferCount], p.[Rows] AS [Row Count],
@@ -1156,12 +1166,17 @@ INNER JOIN sys.partitions AS p WITH (NOLOCK)
 ON a.container_id = p.hobt_id
 INNER JOIN sys.objects AS o WITH (NOLOCK)
 ON p.object_id = o.object_id
+INNER JOIN sys.database_files AS f WITH (NOLOCK)
+ON b.file_id = f.file_id
+INNER JOIN sys.filegroups AS fg WITH (NOLOCK)
+ON f.data_space_id = fg.data_space_id
 WHERE b.database_id = CONVERT(int, DB_ID())
 AND p.[object_id] > 100
 AND OBJECT_NAME(p.[object_id]) NOT LIKE N'plan_%'
 AND OBJECT_NAME(p.[object_id]) NOT LIKE N'sys%'
 AND OBJECT_NAME(p.[object_id]) NOT LIKE N'xml_index_nodes%'
-GROUP BY o.Schema_ID, p.[object_id], p.index_id, p.data_compression_desc, p.[Rows]
+GROUP BY fg.name, o.Schema_ID, p.[object_id], p.index_id, 
+         p.data_compression_desc, p.[Rows]
 ORDER BY [BufferCount] DESC OPTION (RECOMPILE);
 ------
 
@@ -1292,17 +1307,22 @@ ORDER BY ps.avg_fragmentation_in_percent DESC OPTION (RECOMPILE);
 
 
 --- Index Read/Write stats (all tables in current DB) ordered by Reads  (Query 61) (Overall Index Usage - Reads)
-SELECT OBJECT_NAME(s.[object_id]) AS [ObjectName], i.name AS [IndexName], i.index_id,
-	   user_seeks + user_scans + user_lookups AS [Reads], s.user_updates AS [Writes],  
-	   i.type_desc AS [IndexType], i.fill_factor AS [FillFactor], i.has_filter, i.filter_definition, 
+SELECT SCHEMA_NAME(t.[schema_id]) AS [SchemaName], OBJECT_NAME(i.[object_id]) AS [ObjectName], 
+       i.[name] AS [IndexName], i.index_id, 
+       s.user_seeks, s.user_scans, s.user_lookups,
+	   s.user_seeks + s.user_scans + s.user_lookups AS [Total Reads], 
+	   s.user_updates AS [Writes],  
+	   i.[type_desc] AS [Index Type], i.fill_factor AS [Fill Factor], i.has_filter, i.filter_definition, 
 	   s.last_user_scan, s.last_user_lookup, s.last_user_seek
-FROM sys.dm_db_index_usage_stats AS s WITH (NOLOCK)
-INNER JOIN sys.indexes AS i WITH (NOLOCK)
-ON s.[object_id] = i.[object_id]
-WHERE OBJECTPROPERTY(s.[object_id],'IsUserTable') = 1
+FROM sys.indexes AS i WITH (NOLOCK)
+LEFT OUTER JOIN sys.dm_db_index_usage_stats AS s WITH (NOLOCK)
+ON i.[object_id] = s.[object_id]
 AND i.index_id = s.index_id
 AND s.database_id = DB_ID()
-ORDER BY user_seeks + user_scans + user_lookups DESC OPTION (RECOMPILE); -- Order by reads
+LEFT OUTER JOIN sys.tables AS t WITH (NOLOCK)
+ON t.[object_id] = i.[object_id]
+WHERE OBJECTPROPERTY(i.[object_id],'IsUserTable') = 1
+ORDER BY s.user_seeks + s.user_scans + s.user_lookups DESC OPTION (RECOMPILE); -- Order by reads
 ------
 
 
@@ -1310,16 +1330,19 @@ ORDER BY user_seeks + user_scans + user_lookups DESC OPTION (RECOMPILE); -- Orde
 
 
 --- Index Read/Write stats (all tables in current DB) ordered by Writes  (Query 62) (Overall Index Usage - Writes)
-SELECT OBJECT_NAME(s.[object_id]) AS [ObjectName], i.name AS [IndexName], i.index_id,
-	   s.user_updates AS [Writes], user_seeks + user_scans + user_lookups AS [Reads], 
-	   i.type_desc AS [IndexType], i.fill_factor AS [FillFactor], i.has_filter, i.filter_definition,
+SELECT SCHEMA_NAME(t.[schema_id]) AS [SchemaName],OBJECT_NAME(i.[object_id]) AS [ObjectName], 
+	   i.[name] AS [IndexName], i.index_id,
+	   s.user_updates AS [Writes], s.user_seeks + s.user_scans + s.user_lookups AS [Total Reads], 
+	   i.[type_desc] AS [Index Type], i.fill_factor AS [Fill Factor], i.has_filter, i.filter_definition,
 	   s.last_system_update, s.last_user_update
-FROM sys.dm_db_index_usage_stats AS s WITH (NOLOCK)
-INNER JOIN sys.indexes AS i WITH (NOLOCK)
-ON s.[object_id] = i.[object_id]
-WHERE OBJECTPROPERTY(s.[object_id],'IsUserTable') = 1
+FROM sys.indexes AS i WITH (NOLOCK)
+LEFT OUTER JOIN sys.dm_db_index_usage_stats AS s WITH (NOLOCK)
+ON i.[object_id] = s.[object_id]
 AND i.index_id = s.index_id
 AND s.database_id = DB_ID()
+LEFT OUTER JOIN sys.tables AS t WITH (NOLOCK)
+ON t.[object_id] = i.[object_id]
+WHERE OBJECTPROPERTY(i.[object_id],'IsUserTable') = 1
 ORDER BY s.user_updates DESC OPTION (RECOMPILE);						 -- Order by writes
 ------
 
@@ -1372,33 +1395,9 @@ ORDER BY bs.backup_finish_date DESC OPTION (RECOMPILE);
 -- Have you done any backup tuning with striped backups, or changing the parameters of the backup command?
 
 
--- These six Pluralsight Courses go into more detail about how to run these queries and interpret the results
-
--- Azure SQL Database: Diagnosing Performance Issues with DMVs
--- https://bit.ly/2meDRCN
-
--- SQL Server 2017: Diagnosing Performance Issues with DMVs
--- https://bit.ly/2FqCeti
-
--- SQL Server 2017: Diagnosing Configuration Issues with DMVs
--- https://bit.ly/2MSUDUL
-
--- SQL Server 2014 DMV Diagnostic Queries – Part 1 
--- https://bit.ly/2plxCer
-
--- SQL Server 2014 DMV Diagnostic Queries – Part 2
--- https://bit.ly/2IuJpzI
-
--- SQL Server 2014 DMV Diagnostic Queries – Part 3
--- https://bit.ly/2FIlCPb
-
-
-
 -- Microsoft Visual Studio Dev Essentials
 -- https://bit.ly/2qjNRxi
 
 -- Microsoft Azure Learn
 -- https://bit.ly/2O0Hacc
 
--- August 2017 blog series about upgrading and migrating to SQL Server 2016/2017
--- https://bit.ly/2ftKVrX

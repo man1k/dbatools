@@ -228,7 +228,7 @@ Write-ImportTime -Text "Loading dbatools library"
 # Tell the library where the module is based, just in case
 [Sqlcollaborative.Dbatools.dbaSystem.SystemHost]::ModuleBase = $script:PSModuleRoot
 
-if ($script:multiFileImport) {
+if ($script:multiFileImport -or -not (Test-Path -Path "$psScriptRoot\allcommands.ps1")) {
     # All internal functions privately available within the toolset
     foreach ($file in (Get-ChildItem -Path "$psScriptRoot\internal\functions\" -Recurse -Filter *.ps1)) {
         . $file.FullName
@@ -247,7 +247,7 @@ if ($script:multiFileImport) {
 
 } else {
     #    . $psScriptRoot\internal\scripts\cmdlets.ps1
-
+    Write-Verbose -Message "Loading allcommands.ps1 to speed up import times"
     . $psScriptRoot\allcommands.ps1
     #. (Resolve-Path -Path "$script:PSModuleRoot\allcommands.ps1")
     Write-ImportTime -Text "Loading Public and Private Commands"
@@ -270,7 +270,7 @@ if (-not ([Sqlcollaborative.Dbatools.Message.LogHost]::LoggingPath)) {
 # Note: Each optional file must include a conditional governing whether it's run at all.
 # Validations were moved into the other files, in order to prevent having to update dbatools.psm1 every time
 # 96ms
-foreach ($file in (Get-ChildItem -Path "$script:PSScriptRoot\optional" -filter *.ps1)) {
+foreach ($file in (Get-ChildItem -Path "$script:PSScriptRoot\optional" -Filter *.ps1)) {
     . $file.FullName
 }
 Write-ImportTime -Text "Loading Optional Commands"
@@ -394,6 +394,7 @@ $script:xplat = @(
     'Get-DbaLastBackup',
     'Connect-DbaInstance',
     'Get-DbaDbBackupHistory',
+    'Get-DbaAgBackupHistory',
     'Read-DbaBackupHeader',
     'Test-DbaLastBackup',
     'Get-DbaMaxMemory',
@@ -407,6 +408,7 @@ $script:xplat = @(
     'Remove-DbaDbAsymmetricKey',
     'Invoke-DbaDbTransfer',
     'New-DbaDbTransfer',
+    'Remove-DbaDbData',
     'Resolve-DbaNetworkName',
     'Export-DbaAvailabilityGroup',
     'Write-DbaDbTableData',
@@ -455,6 +457,8 @@ $script:xplat = @(
     'Find-DbaDbGrowthEvent',
     'Test-DbaLinkedServerConnection',
     'Get-DbaDbFile',
+    'Get-DbaDbFileGrowth',
+    'Set-DbaDbFileGrowth',
     'Read-DbaTransactionLog',
     'Get-DbaDbTable',
     'Invoke-DbaDbShrink',
@@ -490,7 +494,6 @@ $script:xplat = @(
     'New-DbaServiceMasterKey',
     'Remove-DbaDbCertificate',
     'Remove-DbaDbMasterKey',
-    'New-DbaConnectionStringBuilder',
     'Get-DbaInstanceProperty',
     'Get-DbaInstanceUserOption',
     'New-DbaConnectionString',
@@ -509,6 +512,7 @@ $script:xplat = @(
     'Get-DbaDbMailLog',
     'Get-DbaDbMailHistory',
     'Get-DbaDbView',
+    'Remove-DbaDbView',
     'Get-DbaDbUdf',
     'Get-DbaDbPartitionFunction',
     'Get-DbaDbPartitionScheme',
@@ -721,6 +725,16 @@ $script:xplat = @(
     'Move-DbaRegServerGroup',
     'Remove-DbaRegServer',
     'Remove-DbaRegServerGroup',
+    'New-DbaCustomError',
+    'Remove-DbaCustomError',
+    'Get-DbaDbSequence',
+    'New-DbaDbSequence',
+    'Remove-DbaDbSequence',
+    'Select-DbaDbSequenceNextValue',
+    'Set-DbaDbSequence',
+    'Get-DbaDbUserDefinedTableType',
+    'Get-DbaDbServiceBrokerService',
+    'Get-DbaDbServiceBrokerQueue ',
     # Config system
     'Get-DbatoolsConfig',
     'Get-DbatoolsConfigValue',
@@ -764,16 +778,37 @@ $script:xplat = @(
     'Export-DbaDbRole',
     'Export-DbaServerRole',
     'Get-DbaBuildReference',
+    'Update-DbaBuildReference',
     'Install-DbaFirstResponderKit',
     'Install-DbaWhoIsActive',
     'Update-Dbatools',
     'Add-DbaServerRoleMember',
     'Get-DbatoolsPath',
-    'Set-DbatoolsPath'
+    'Set-DbatoolsPath',
+    'Export-DbaSysDbUserObject',
+    'Test-DbaDbQueryStore',
+    'Install-DbaMultiTool',
+    'New-DbaAgentOperator',
+    'Remove-DbaAgentOperator',
+    'Remove-DbaDbTableData',
+    'Get-DbaDbSchema',
+    'New-DbaDbSchema',
+    'Set-DbaDbSchema',
+    'Remove-DbaDbSchema',
+    'Get-DbaDbSynonym',
+    'New-DbaDbSynonym',
+    'Remove-DbaDbSynonym',
+    'Install-DbaDarlingData',
+    'New-DbaDbFileGroup',
+    'Remove-DbaDbFileGroup',
+    'Set-DbaDbFileGroup',
+    'Remove-DbaLinkedServer',
+    'Test-DbaAvailabilityGroup'
 )
 
 $script:noncoresmo = @(
     # SMO issues
+    'New-DbaConnectionStringBuilder',
     'Export-DbaUser',
     'Get-DbaSsisExecutionHistory',
     'Get-DbaRepDistributor',
@@ -791,7 +826,8 @@ $script:noncoresmo = @(
     'Get-DbaRepPublication',
     'Test-DbaRepLatency',
     'Export-DbaRepServerSetting',
-    'Get-DbaRepServer'
+    'Get-DbaRepServer',
+    'Move-DbaDbFile'
 )
 $script:windowsonly = @(
     # solvable filesystem issues or other workarounds
@@ -814,6 +850,8 @@ $script:windowsonly = @(
     'Test-DbaMaxMemory', # can be fixed by not testing remote when linux is detected
     'Rename-DbaDatabase', # can maybebe fixed by not remoting when linux is detected
     # CM and Windows functions
+    'Get-DbaNetworkConfiguration',
+    'Set-DbaNetworkConfiguration',
     'Get-DbaExtendedProtection',
     'Set-DbaExtendedProtection',
     'Install-DbaInstance',
