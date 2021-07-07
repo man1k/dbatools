@@ -217,19 +217,37 @@ function Set-DbaAgentJob {
 
         # Check the e-mail operator name
         if (($EmailLevel -ge 1) -and (-not $EmailOperator)) {
-            Stop-Function -Message "Please set the e-mail operator when the e-mail level parameter is set." -Target $sqlinstance
+            Stop-Function -Message "Please set the e-mail operator when the e-mail level parameter is set." -Target $SqlInstance
             return
         }
 
-        # Check the e-mail operator name
+        # Check the e-mail level parameter
+        if ($EmailOperator -and ($null -eq $EmailLevel)) {
+            Stop-Function -Message "Please set the e-mail level parameter when the e-mail level operator is set." -Target $SqlInstance
+            return
+        }
+
+        # Check the net send operator name
         if (($NetsendLevel -ge 1) -and (-not $NetsendOperator)) {
-            Stop-Function -Message "Please set the netsend operator when the netsend level parameter is set." -Target $sqlinstance
+            Stop-Function -Message "Please set the netsend operator when the netsend level parameter is set." -Target $SqlInstance
             return
         }
 
-        # Check the e-mail operator name
+        # Check the net send level parameter
+        if ($NetsendOperator -and ($null -eq $NetsendLevel)) {
+            Stop-Function -Message "Please set the net send level parameter when the net send level operator is set." -Target $SqlInstance
+            return
+        }
+
+        # Check the page operator name
         if (($PageLevel -ge 1) -and (-not $PageOperator)) {
-            Stop-Function -Message "Please set the page operator when the page level parameter is set." -Target $sqlinstance
+            Stop-Function -Message "Please set the page operator when the page level parameter is set." -Target $SqlInstance
+            return
+        }
+
+        # Check the page level parameter
+        if ($PageOperator -and ($null -eq $PageLevel)) {
+            Stop-Function -Message "Please set the page level parameter when the page level operator is set." -Target $SqlInstance
             return
         }
     }
@@ -239,11 +257,11 @@ function Set-DbaAgentJob {
         if (Test-FunctionInterrupt) { return }
 
         if ((-not $InputObject) -and (-not $Job)) {
-            Stop-Function -Message "You must specify a job name or pipe in results from another command" -Target $sqlinstance
+            Stop-Function -Message "You must specify a job name or pipe in results from another command" -Target $SqlInstance
             return
         }
 
-        foreach ($instance in $sqlinstance) {
+        foreach ($instance in $SqlInstance) {
             # Try connecting to the instance
             try {
                 $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential

@@ -134,7 +134,6 @@ function Get-DbaKbUpdate {
 
                 $guids = $results.Links |
                     Where-Object ID -match '_link' |
-                    Where-Object { $_.OuterHTML -match ( "(?=.*" + ( $Filter -join ")(?=.*" ) + ")" ) } |
                     ForEach-Object { $_.id.replace('_link', '') } |
                     Where-Object { $_ -in $kbids }
 
@@ -142,14 +141,14 @@ function Get-DbaKbUpdate {
                     Write-Message -Level Verbose -Message "Downloading information for $guid"
                     $post = @{ size = 0; updateID = $guid; uidInfo = $guid } | ConvertTo-Json -Compress
                     $body = @{ updateIDs = "[$post]" }
-                    $downloaddialog = Invoke-TlsWebRequest -Uri 'http://www.catalog.update.microsoft.com/DownloadDialog.aspx' -Method Post -Body $body -UseBasicParsing -ErrorAction Stop | Select-Object -ExpandProperty Content
+                    $downloaddialog = Invoke-TlsWebRequest -Uri 'https://www.catalog.update.microsoft.com/DownloadDialog.aspx' -Method Post -Body $body -UseBasicParsing -ErrorAction Stop | Select-Object -ExpandProperty Content
 
                     # sorry, don't know regex. this is ugly af.
                     $title = Get-Info -Text $downloaddialog -Pattern 'enTitle ='
                     $arch = Get-Info -Text $downloaddialog -Pattern 'architectures ='
                     $longlang = Get-Info -Text $downloaddialog -Pattern 'longLanguages ='
                     $updateid = Get-Info -Text $downloaddialog -Pattern 'updateID ='
-                    $ishotfix = Get-Info -Text $downloaddialog -Pattern 'isHotFix ='
+                    $isHotfix = Get-Info -Text $downloaddialog -Pattern 'isHotFix ='
 
                     if ($arch -eq "AMD64") {
                         $arch = "x64"
@@ -213,7 +212,7 @@ function Get-DbaKbUpdate {
                             SupportedUntil    = $build.SupportedUntil
                             Architecture      = $arch
                             Language          = $longlang
-                            Hotfix            = $ishotfix
+                            Hotfix            = $isHotfix
                             Description       = $description
                             LastModified      = $lastmodified
                             Size              = $size

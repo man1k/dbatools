@@ -93,7 +93,7 @@ function Export-DbaCredential {
         if (Test-Bound -ParameterName SqlInstance) {
             foreach ($instance in $SqlInstance) {
                 try {
-                    $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential -MinimumVersion 9
+                    $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential -MinimumVersion 9
 
                     $serverCreds = $server.Credentials
                     if (Test-Bound -ParameterName Identity) {
@@ -119,8 +119,8 @@ function Export-DbaCredential {
 
                         foreach ($cred in $server.Credentials) {
                             $credObject = [PSCustomObject]@{
-                                Name     = '[' + $cred.name + ']'
-                                Identity = $cred.Id.ToString()
+                                Name     = '[' + $cred.Name + ']'
+                                Identity = $cred.Identity.ToString()
                                 Password = ''
                             }
                             $creds.Add($credObject) | Out-Null

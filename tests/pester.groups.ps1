@@ -11,12 +11,14 @@ $TestsRunGroups = @{
     "service_restarts"  = @(
         'Start-DbaService',
         'Stop-DbaService',
+        'Set-DbaStartupParameter',
         'Restart-DbaService',
         'Get-DbaService',
         'Update-DbaServiceAccount',
         'Enable-DbaAgHadr',
         'Disable-DbaAgHadr',
-        'Reset-DbaAdmin'
+        'Reset-DbaAdmin',
+        'Set-DbaTcpPort'
     )
     # do not run on appveyor
     "appveyor_disabled" = @(
@@ -54,17 +56,21 @@ $TestsRunGroups = @{
         'Test-DbaAgentJobOwner',
         'Stop-DbaXESession',
         'Get-DbaPrivilege',
-        'Find-DbaAgentJob', # strange pester issue
-        'Remove-DbaDatabaseSafely', # strange pester issue
+        'Get-DbaPermission',
+        # strange pester issues
+        'Find-DbaAgentJob',
+        'Remove-DbaDatabaseSafely',
         'Set-DbaDbOwner',
         'Test-DbaManagementObject',
         'Test-DbaMaxDop',
         'New-DbaLogin',
         'New-DbaDbUser',
         'Get-DbaLastGoodCheckDb',
+        'Read-DbaAuditFile',
         # doesn't work on appveyor but so works locally D:
         'Read-DbaXeFile',
-        'Find-DbaCommand'
+        'Find-DbaCommand',
+        'Watch-DbaDbLogin'
     )
     # do not run everywhere
     "disabled"          = @()
